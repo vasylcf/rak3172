@@ -35,11 +35,12 @@
 #include <string.h>
 #include <stdbool.h>
 
-/* ---- CubeMX-generated init prototypes ---- */
-extern void SystemClock_Config(void);
-extern void MX_GPIO_Init(void);
-extern void MX_USART2_UART_Init(void);
-extern void MX_SubGHz_Init(void);
+/*
+ * hw_init() replaces the four CubeMX-generated calls below.
+ * Delete this include and restore the extern declarations if you
+ * are using a CubeMX-generated project.
+ */
+#include "hw_init.h"
 
 /* --------------------------------------------------------------------------
  * Application state
@@ -126,11 +127,7 @@ static void on_rx_timeout(void)
 int main(void)
 {
     /* ---- HAL & peripheral init ---- */
-    HAL_Init();
-    SystemClock_Config();
-    MX_GPIO_Init();
-    MX_USART2_UART_Init();
-    MX_SubGHz_Init();
+    hw_init();
 
     /* ---- Banner ---- */
     debug_println("RAKwireless LoRa P2P – SLAVE (plain C / Keil)");

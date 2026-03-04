@@ -9,7 +9,7 @@
 
 | Аспект | Оригинал (Kongduino) | Arduino Master | Arduino Slave | Данный C-порт |
 |---|---|---|---|---|
-| **API** | `api.lorawan.*` (новый RUI3) | `api.lora.*` (старый RUI3) | `api.lora.*` | STM32 SubGHz_Phy `Radio.*` |
+| **API** | `api.lorawan.*` (новый RUI3) | `api.lora.*` (старый RUI3) | `api.lora.*` | HAL_SUBGHZ напрямую |
 | **Frequency** | 868.125 MHz | 868.000 MHz | 868.000 MHz | 868.000 MHz |
 | **SF** | 12 | 12 | 7 ⚠️ | 12 (оба) |
 | **BW** | 0 (125 kHz) | 0 (125 kHz) | 4 ⚠️ | 0 (125 kHz) |
@@ -18,6 +18,7 @@
 | **TX payload** | `"payload #XXXX"` (счётчик) | `"508012"` (фиксированный) | `"It's me"` / `"It's not me"` | Как в Arduino |
 | **Логика RX** | Ping-pong по rx_done | Игнорирует rx_done, шлёт каждые 5 с | Проверка серийного номера | Как в Arduino |
 | **Разделение ролей** | Один файл, обе роли | Отдельный файл Master | Отдельный файл Slave | Отдельные `main_master.c` / `main_slave.c` |
+| **Radio backend** | RUI3 внутренний | RUI3 внутренний | RUI3 внутренний | HAL_SUBGHZ напрямую, без middleware |
 
 > ⚠️ **Баг в оригинальном Arduino-коде:** Slave использует SF=7, BW=4, CR=1, тогда как Master — SF=12, BW=0, CR=0. Эти настройки **несовместимы** — на обоих концах должны быть одинаковые параметры LoRa-модуляции. В C-порте оба устройства используют SF=12/BW=125kHz/CR=4\/5.
 
@@ -29,13 +30,16 @@
 keil_c_port/
 ├── Inc/
 │   ├── app_config.h        # Выбор роли (MASTER vs SLAVE), серийные номера
+│   ├── hw_init.h           # Прототип hw_init() и extern huart2
 │   ├── lora_p2p.h          # API абстракции радио
 │   └── uart_debug.h        # Debug printf через UART
 ├── Src/
-│   ├── lora_p2p.c          # Драйвер радио (обёртка над SubGHz_Phy middleware)
+│   ├── hw_init.c           # Тактирование (MSI 48 МГц), GPIO, USART2
+│   ├── lora_p2p.c          # LoRa P2P драйвер поверх HAL_SUBGHZ (без middleware)
 │   ├── uart_debug.c        # Реализация UART
 │   ├── main_master.c       # Приложение Master (включать ТОЛЬКО его ИЛИ slave)
 │   └── main_slave.c        # Приложение Slave
+├── KEIL_SETUP.md           # Пошаговая инструкция по настройке Keil + отладка
 └── Doc/
     └── (этот README)
 ```
@@ -44,14 +48,15 @@ keil_c_port/
 
 ## Настройка проекта в Keil
 
+> 📄 Подробная пошаговая инструкция с разделом отладки: **[KEIL_SETUP.md](KEIL_SETUP.md)**
+
 ### Шаг 1 — Генерация базового проекта в STM32CubeMX
 
 1. Откройте STM32CubeMX, создайте новый проект для **STM32WLE5CCU6** (MCU внутри RAK3172).
 2. Включите периферию:
-   - **USART2**: Asynchronous, 115200 baud, 8N1 (отладочный вывод через ST-Link VCP)  
-   - **SubGHz Radio**: включите радио-периферию
+   - **USART2**: Asynchronous, 115200 baud, 8N1 (отладочный вывод через ST-Link VCP)
    - **RTC** (опционально, для меток времени)
-3. В **Middleware → SubGHz_Phy**: включите. Это добавит драйвер `Radio`.
+3. **SubGHz_Phy middleware — НЕ добавлять.** Драйвер `lora_p2p.c` работает напрямую с HAL_SUBGHZ и не требует middleware.
 4. Установите **Project Manager → Toolchain** в **MDK-ARM** (Keil).
 5. **Generate Code**.
 
@@ -59,11 +64,15 @@ keil_c_port/
 
 1. В Keil µVision откройте сгенерированный `.uvprojx`.
 2. Добавьте в **Source Group**:
+   - `Src/hw_init.c` *(не нужен, если используете CubeMX-проект с готовым `main.c`)*
    - `Src/lora_p2p.c`
    - `Src/uart_debug.c`
    - **Либо** `Src/main_master.c` **либо** `Src/main_slave.c` (не оба — оба определяют `main()`).
 3. Добавьте `Inc/` в **Options → C/C++ → Include Paths**.
 4. Удалите или переименуйте сгенерированный CubeMX файл `main.c` (он тоже определяет `main()`).
+5. Убедитесь, что в **Sources** есть стандартные HAL-файлы:  
+   `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_rcc.c`,  
+   `stm32wlxx_hal_gpio.c`, `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`
 
 ### Шаг 3 — Сборка и прошивка
 
@@ -146,16 +155,34 @@ gcc -DUNIT_TEST -I Inc/ Src/uart_debug.c tests/test_logic.c -o test_logic
 
 ### 5. Автоматизированное регрессионное тестирование (CI-friendly)
 
-Для непрерывного тестирования без железа создайте mock-реализации HAL и Radio:
+Для непрерывного тестирования без железа создайте mock-реализации HAL и `lora_p2p`:
 
 ```c
-// tests/mock_radio.c
-#include "radio.h"
-static RadioEvents_t *mock_events;
-void Radio_Init(RadioEvents_t *events) { mock_events = events; }
-void Radio_Send(uint8_t *buf, uint8_t len) { /* записать вызов */ mock_events->TxDone(); }
-void Radio_Rx(uint32_t timeout) { /* имитировать rx после задержки */ }
-// ... и т.д.
+// tests/mock_lora.c
+#include "lora_p2p.h"
+
+static lora_p2p_rx_cb_t mock_rx_cb = NULL;
+static lora_p2p_tx_cb_t mock_tx_cb = NULL;
+
+bool lora_p2p_init(const lora_p2p_config_t *cfg) { return true; }
+void lora_p2p_register_rx_callback(lora_p2p_rx_cb_t cb)  { mock_rx_cb = cb; }
+void lora_p2p_register_tx_callback(lora_p2p_tx_cb_t cb)  { mock_tx_cb = cb; }
+bool lora_p2p_receive(uint32_t t)  { return true; }
+bool lora_p2p_standby(void)        { return true; }
+bool lora_p2p_send(const uint8_t *d, uint8_t l) {
+    /* Симулировать TX Done */
+    if (mock_tx_cb) mock_tx_cb();
+    return true;
+}
+void lora_p2p_irq_process(void) {}
+
+/* Симулировать прием пакета из теста */
+void simulate_rx(const uint8_t *buf, uint8_t len, int16_t rssi, int8_t snr) {
+    if (mock_rx_cb) {
+        lora_p2p_rx_data_t d = { .buffer=buf, .buffer_size=len, .rssi=rssi, .snr=snr };
+        mock_rx_cb(d);
+    }
+}
 ```
 
 Затем линкуйте с mock-драйвером вместо реального и запускайте логику приложения в тестовом окружении на ПК.
@@ -164,17 +191,20 @@ void Radio_Rx(uint32_t timeout) { /* имитировать rx после зад
 
 ## Краткая справка: Arduino API → C API
 
-| Arduino (RUI3) | C (SubGHz_Phy / данный порт) |
+| Arduino (RUI3) | C (данный порт) |
 |---|---|
-| `Serial.begin(115200)` | `MX_USART2_UART_Init()` (CubeMX) |
+| `Serial.begin(115200)` | `hw_init()` или `MX_USART2_UART_Init()` (CubeMX) |
 | `Serial.printf(...)` | `debug_printf(...)` |
 | `Serial.println(...)` | `debug_println(...)` |
 | `delay(ms)` | `HAL_Delay(ms)` |
 | `millis()` | `HAL_GetTick()` |
-| `api.lora.pfreq.set(f)` | `Radio.SetChannel(f)` |
-| `api.lora.psf.set(sf)` | Часть `Radio.SetTxConfig()` / `SetRxConfig()` |
-| `api.lora.precv(timeout)` | `lora_p2p_receive(timeout)` → `Radio.Rx()` |
-| `api.lora.precv(0)` | `lora_p2p_standby()` → `Radio.Standby()` |
-| `api.lora.psend(len, buf)` | `lora_p2p_send(buf, len)` → `Radio.Send()` |
+| `api.lora.pfreq.set(f)` | поле `cfg.frequency` в `lora_p2p_config_t` |
+| `api.lora.psf.set(sf)` | поле `cfg.spreading_factor` |
+| `api.lora.pbw.set(bw)` | поле `cfg.bandwidth` |
+| `api.lora.pcr.set(cr)` | поле `cfg.coding_rate` |
+| `api.lora.ptp.set(pwr)` | поле `cfg.tx_power` |
+| `api.lora.precv(timeout)` | `lora_p2p_receive(timeout)` |
+| `api.lora.precv(0)` | `lora_p2p_standby()` |
+| `api.lora.psend(len, buf)` | `lora_p2p_send(buf, len)` |
 | `api.lora.registerPRecvCallback` | `lora_p2p_register_rx_callback()` |
 | `api.lora.registerPSendCallback` | `lora_p2p_register_tx_callback()` |
