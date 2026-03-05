@@ -88,11 +88,7 @@
 #define RX_CONTINUOUS           0xFFFFFFUL
 #define MS_TO_RXTIMEOUT(ms)     ((uint32_t)(ms) * 64UL)
 
-/*
- * DIO2-as-RF-switch opcode 0x9D.
- * Cast because older HAL versions may not list it in RadioSetCmd_TypeDef.
- */
-#define RADIO_SET_DIO2ASRFSWITCH  ((RadioSetCmd_TypeDef)0x9DU)
+/* DIO2-as-RF-switch: RADIO_SET_RFSWITCHMODE (0x9D) in HAL enum */
 
 /* ==========================================================================
  * Private state
@@ -113,7 +109,7 @@ static uint8_t s_rx_buf[RX_BUF_SIZE];
  * SX126x low-level wrappers  (all blocking, use HAL SUBGHZ SPI)
  * ========================================================================== */
 
-static void sx_cmd1(RadioSetCmd_TypeDef cmd, uint8_t val)
+static void sx_cmd1(SUBGHZ_RadioSetCmd_t cmd, uint8_t val)
 {
     HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, cmd, &val, 1U);
 }
@@ -198,7 +194,7 @@ static void sx_set_buf_base(void)
 static void sx_set_dio2_rf_switch(void)
 {
     uint8_t p = 0x01U;
-    HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, RADIO_SET_DIO2ASRFSWITCH, &p, 1U);
+    HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, RADIO_SET_RFSWITCHMODE, &p, 1U);
 }
 
 static void sx_set_dio_irq(void)
@@ -209,7 +205,7 @@ static void sx_set_dio_irq(void)
         0x00U, 0x00U,                                         /* DIO2   */
         0x00U, 0x00U                                          /* DIO3   */
     };
-    HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, RADIO_SET_DIOIRQPARAMS, p, 8U);
+    HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, RADIO_CFG_DIOIRQ, p, 8U);
 }
 
 static uint16_t sx_get_irq(void)

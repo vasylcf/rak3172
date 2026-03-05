@@ -1,6 +1,6 @@
 # LoRa P2P Master / Slave — Порт на чистый C для STM32WL (Keil µVision)
 
-Портировано из Arduino/RUI3 скетчей данного репозитория, оригинал:  
+Портировано из Arduino/RUI3 скетчей данного репозитория, оригинал:
 <https://github.com/Kongduino/RUI3_LoRa_P2P_PING_PONG>
 
 ---
@@ -29,19 +29,25 @@
 ```
 keil_c_port/
 ├── Inc/
-│   ├── app_config.h        # Выбор роли (MASTER vs SLAVE), серийные номера
-│   ├── hw_init.h           # Прототип hw_init() и extern huart2
-│   ├── lora_p2p.h          # API абстракции радио
-│   └── uart_debug.h        # Debug printf через UART
+│   ├── app_config.h            # Выбор роли (MASTER vs SLAVE), серийные номера
+│   ├── hw_init.h               # Прототип hw_init() и extern huart2
+│   ├── lora_p2p.h              # API абстракции радио
+│   ├── uart_debug.h            # Debug printf через UART
+│   └── stm32wlxx_hal_conf.h    # Конфигурация HAL (из шаблона ST)
 ├── Src/
-│   ├── hw_init.c           # Тактирование (MSI 48 МГц), GPIO, USART2
-│   ├── lora_p2p.c          # LoRa P2P драйвер поверх HAL_SUBGHZ (без middleware)
-│   ├── uart_debug.c        # Реализация UART
-│   ├── main_master.c       # Приложение Master (включать ТОЛЬКО его ИЛИ slave)
-│   └── main_slave.c        # Приложение Slave
-├── KEIL_SETUP.md           # Пошаговая инструкция по настройке Keil + отладка
-└── Doc/
-    └── (этот README)
+│   ├── hw_init.c               # Тактирование (MSI 48 МГц), GPIO, USART2
+│   ├── lora_p2p.c              # LoRa P2P драйвер поверх HAL_SUBGHZ (без middleware)
+│   ├── uart_debug.c            # Реализация UART
+│   ├── main_master.c           # Приложение Master (включать ТОЛЬКО его ИЛИ slave)
+│   └── main_slave.c            # Приложение Slave
+├── Drivers/                    # HAL и CMSIS от ST (скачиваются отдельно, см. BUILD_GUIDE.md)
+│   ├── STM32WLxx_HAL_Driver/   # HAL драйверы (subghz, uart, rcc, gpio...)
+│   └── CMSIS/                  # Cortex-M4 Core + STM32WLE5 device headers + startup
+├── Makefile                    # Сборка через arm-none-eabi-gcc (Linux/macOS альтернатива Keil)
+├── STM32WLE5XX_FLASH.ld        # Linker script для GCC
+├── KEIL_SETUP.md               # Пошаговая инструкция по настройке Keil + отладка
+├── BUILD_GUIDE.md              # Пошаговая инструкция сборки через GCC на Linux
+└── README-ru.md                # Этот файл
 ```
 
 ---
@@ -70,9 +76,14 @@ keil_c_port/
    - **Либо** `Src/main_master.c` **либо** `Src/main_slave.c` (не оба — оба определяют `main()`).
 3. Добавьте `Inc/` в **Options → C/C++ → Include Paths**.
 4. Удалите или переименуйте сгенерированный CubeMX файл `main.c` (он тоже определяет `main()`).
-5. Убедитесь, что в **Sources** есть стандартные HAL-файлы:  
-   `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_rcc.c`,  
-   `stm32wlxx_hal_gpio.c`, `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`
+5. Убедитесь, что в **Sources** есть стандартные HAL-файлы:
+   `stm32wlxx_hal.c`, `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_uart_ex.c`,
+   `stm32wlxx_hal_rcc.c`, `stm32wlxx_hal_rcc_ex.c`, `stm32wlxx_hal_gpio.c`,
+   `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`, `stm32wlxx_hal_pwr_ex.c`,
+   `stm32wlxx_hal_dma.c`, `stm32wlxx_hal_flash.c`, `stm32wlxx_hal_flash_ex.c`
+
+> ⚠️ **Частая ошибка:** файлы `dma`, `flash`, `flash_ex` часто забывают добавить.
+> Без них линковщик выдаст `undefined reference` на внутренние зависимости HAL.
 
 ### Шаг 3 — Сборка и прошивка
 
@@ -90,6 +101,38 @@ keil_c_port/
 | SWDIO | PA13 | SWD header | Программирование/отладка |
 | SWCLK | PA14 | SWD header | Программирование/отладка |
 | SubGHz Radio | Internal | — | Встроенный SX126x, внешний SPI не нужен |
+
+---
+
+## Верификация сборки
+
+Код проверен кросс-компилятором `arm-none-eabi-gcc 13.2.1` на Linux — **0 ошибок, 0 предупреждений** (в коде приложения).
+
+При верификации были найдены и исправлены **3 бага** в `lora_p2p.c` (несовместимость с актуальной версией HAL):
+
+| Было (неправильно) | Стало (правильно) |
+|---|---|
+| `RadioSetCmd_TypeDef` | `SUBGHZ_RadioSetCmd_t` |
+| `RADIO_SET_DIO2ASRFSWITCH` | `RADIO_SET_RFSWITCHMODE` |
+| `RADIO_SET_DIOIRQPARAMS` | `RADIO_CFG_DIOIRQ` |
+
+### Сборка без Keil (Linux/macOS)
+
+Если у вас нет Keil, проверить компиляцию можно через GCC:
+
+```bash
+# Установка (Ubuntu/Debian)
+sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+# Сборка
+cd keil_c_port
+make master   # Собрать Master (build/master/master_firmware.bin)
+make slave    # Собрать Slave  (build/slave/slave_firmware.bin)
+make all      # Собрать оба
+make clean    # Очистить
+```
+
+> Подробная инструкция: **[BUILD_GUIDE.md](BUILD_GUIDE.md)**
 
 ---
 
