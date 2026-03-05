@@ -1,6 +1,6 @@
 # Подключение к Keil — пошаговая инструкция
 
-Целевой чип: **STM32WLE5CC** (RAK3172)  
+Целевой чип: **STM32WLE5CC** (RAK3172)
 Подход: прямой HAL_SUBGHZ, **без SubGHz_Phy middleware**.
 
 ---
@@ -8,7 +8,7 @@
 ## 1. Создание CubeMX-проекта (с нуля)
 
 1. Открыть STM32CubeMX → New Project → выбрать **STM32WLE5CCUx**
-2. **Connectivity → USART2** → Mode: `Asynchronous`  
+2. **Connectivity → USART2** → Mode: `Asynchronous`
    - Baud Rate: `115200`, Word Length: `8`, Parity: `None`, Stop Bits: `1`
 3. **Middleware → SubGHz_Phy** — **НЕ добавлять** (не нужен)
 4. **Project Manager**:
@@ -16,7 +16,7 @@
    - Min Version: `V5`
 5. **Generate Code**
 
-> **Если уже есть готовый CubeMX-проект** — переходите сразу к шагу 2.  
+> **Если уже есть готовый CubeMX-проект** — переходите сразу к шагу 2.
 > Убедитесь, что в нём нет SubGHz_Phy middleware в дереве файлов.
 
 ---
@@ -35,7 +35,7 @@
 | `main_master.c` | Прошивка Master **— только одно из двух** |
 | `main_slave.c` | Прошивка Slave &nbsp; **— только одно из двух** |
 
-> `main_master.c` и `main_slave.c` оба определяют `main()`.  
+> `main_master.c` и `main_slave.c` оба определяют `main()`.
 > В проект добавлять **строго один** из них.
 
 ---
@@ -57,6 +57,15 @@
 - `app_config.h`
 - `hw_init.h`
 - `stm32wlxx_hal.h` (из STM32CubeWL HAL)
+- `stm32wlxx_hal_conf.h` — **обязательный файл конфигурации HAL**
+
+> **Важно:** HAL ищет файл `stm32wlxx_hal_conf.h` в Include Paths.
+> Если CubeMX его не сгенерировал, скопируйте шаблон:
+> ```
+> Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_conf_template.h
+>   → Inc/stm32wlxx_hal_conf.h
+> ```
+> Шаблон включает все модули по умолчанию — этого достаточно.
 
 ---
 
@@ -66,16 +75,24 @@
 
 ```
 Drivers/STM32WLxx_HAL_Driver/Src/
-    stm32wlxx_hal.c
-    stm32wlxx_hal_subghz.c
-    stm32wlxx_hal_uart.c
-    stm32wlxx_hal_rcc.c
-    stm32wlxx_hal_rcc_ex.c
-    stm32wlxx_hal_gpio.c
-    stm32wlxx_hal_cortex.c
-    stm32wlxx_hal_pwr.c
-    stm32wlxx_hal_pwr_ex.c
+    stm32wlxx_hal.c            # Базовый HAL (HAL_Init, HAL_Delay, SysTick)
+    stm32wlxx_hal_cortex.c     # NVIC, SysTick
+    stm32wlxx_hal_rcc.c        # Тактирование
+    stm32wlxx_hal_rcc_ex.c     # Расширенное тактирование
+    stm32wlxx_hal_gpio.c       # GPIO
+    stm32wlxx_hal_uart.c       # UART (отладочный вывод)
+    stm32wlxx_hal_uart_ex.c    # UART расширенный
+    stm32wlxx_hal_subghz.c     # SubGHz SPI к радиомодулю SX126x
+    stm32wlxx_hal_pwr.c        # Управление питанием
+    stm32wlxx_hal_pwr_ex.c     # Управление питанием расширенный
+    stm32wlxx_hal_dma.c        # DMA (зависимость HAL)
+    stm32wlxx_hal_flash.c      # Flash (зависимость HAL)
+    stm32wlxx_hal_flash_ex.c   # Flash расширенный
 ```
+
+> **Внимание:** `stm32wlxx_hal_dma.c`, `stm32wlxx_hal_flash.c` и `stm32wlxx_hal_flash_ex.c`
+> часто забывают добавить. Без них линковщик выдаст `undefined reference` на функции,
+> которые вызываются внутри других HAL-модулей.
 
 CMSIS и startup также должны присутствовать:
 
@@ -126,7 +143,7 @@ SubGHz_Phy/Target/                      <- удалить
    MX_USART2_UART_Init();
    ```
 3. `MX_SubGHz_Init()` — **не вызывать** (lora_p2p_init() делает всё сам)
-4. Убедиться, что в вашем `main.c` от CubeMX **нет** своего `main()` —  
+4. Убедиться, что в вашем `main.c` от CubeMX **нет** своего `main()` —
    либо удалить его, либо переименовать CubeMX-файл
 
 ---
@@ -149,7 +166,7 @@ APP_ROLE_MASTER=1
 
 ## 8. TCXO — если радио не инициализируется
 
-По умолчанию `lora_p2p.c` выставляет напряжение TCXO = **3.0 В** (код `0x06`).  
+По умолчанию `lora_p2p.c` выставляет напряжение TCXO = **3.0 В** (код `0x06`).
 Если ваш модуль использует другое напряжение — добавьте дефайн:
 
 ```
@@ -163,6 +180,63 @@ Options → C/C++ → Define:  LORA_TCXO_VOLTAGE=0x07
 | 0x05 | 2.7 В |
 | 0x06 | 3.0 В (RAK3172 по умолчанию) |
 | 0x07 | 3.3 В |
+
+---
+
+## 9. Известные исправления (найдены при верификации сборки)
+
+При проверке кода кросс-компилятором `arm-none-eabi-gcc` на Linux были обнаружены
+и исправлены **3 ошибки** в `lora_p2p.c`. Эти же ошибки возникли бы и в Keil.
+
+Если вы работаете со старой версией файлов — проверьте, что в вашем `lora_p2p.c`
+используются **правильные** имена из HAL:
+
+| Что | Неправильно (старое) | Правильно (актуальное) | Описание |
+|---|---|---|---|
+| Тип команды | `RadioSetCmd_TypeDef` | `SUBGHZ_RadioSetCmd_t` | Enum в `stm32wlxx_hal_subghz.h` |
+| DIO2 RF switch | `RADIO_SET_DIO2ASRFSWITCH` | `RADIO_SET_RFSWITCHMODE` | Значение 0x9D, уже есть в HAL enum |
+| DIO IRQ config | `RADIO_SET_DIOIRQPARAMS` | `RADIO_CFG_DIOIRQ` | Значение 0x08 |
+
+> Эти имена зависят от версии STM32CubeWL HAL. В актуальной версии (v1.3.0+)
+> используются имена из правого столбца. Если вы видите ошибку вида
+> `unknown type name 'RadioSetCmd_TypeDef'` — примените исправления выше.
+
+---
+
+## 10. Альтернатива Keil — проверка сборки через GCC на Linux/macOS
+
+Если Keil недоступен (например, на Linux/macOS), можно верифицировать код
+тем же ARM-компилятором через командную строку.
+
+### Установка (Ubuntu/Debian)
+
+```bash
+sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi
+```
+
+### Сборка
+
+В папке `keil_c_port/` есть готовый `Makefile`:
+
+```bash
+cd keil_c_port
+make master   # Собрать Master (build/master/master_firmware.bin)
+make slave    # Собрать Slave  (build/slave/slave_firmware.bin)
+make all      # Собрать оба
+make clean    # Очистить
+```
+
+Makefile автоматически подтягивает HAL-драйверы из `Drivers/` и генерирует
+готовые `.bin`/`.hex` файлы для прошивки через STM32CubeProgrammer.
+
+> **Примечание:** Для работы Makefile необходимо, чтобы папка `Drivers/`
+> содержала HAL и CMSIS файлы. Инструкция по скачиванию — в `BUILD_GUIDE.md`.
+
+### Что это даёт
+
+- **0 errors** = код гарантированно соберётся и в Keil
+- Те же ошибки типов, пропущенных include, несовместимых аргументов
+- Можно запускать в CI/CD для автоматической проверки
 
 ---
 
@@ -189,7 +263,7 @@ undefined reference to ...
 
 ## B. Какие файлы реально попали в сборку
 
-`Project → Manage → Project Items` — скриншот дерева файлов.  
+`Project → Manage → Project Items` — скриншот дерева файлов.
 Или в Build Output найти строки:
 ```
 compiling lora_p2p.c...
@@ -273,7 +347,7 @@ if (HAL_SUBGHZ_Init(&s_hsubghz) != HAL_OK) {
 debug_println("HAL_SUBGHZ_Init OK");
 ```
 
-Если `HAL_SUBGHZ_Init` завершается успешно, но радио молчит — скорее всего  
+Если `HAL_SUBGHZ_Init` завершается успешно, но радио молчит — скорее всего
 неправильное напряжение TCXO (см. шаг 8 выше).
 
 ---

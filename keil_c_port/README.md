@@ -1,6 +1,6 @@
 # LoRa P2P Master / Slave — Plain C Port for STM32WL (Keil µVision)
 
-Ported from the Arduino/RUI3 sketches in this repo, which originate from  
+Ported from the Arduino/RUI3 sketches in this repo, which originate from
 <https://github.com/Kongduino/RUI3_LoRa_P2P_PING_PONG>
 
 ---
@@ -29,19 +29,25 @@ Ported from the Arduino/RUI3 sketches in this repo, which originate from
 ```
 keil_c_port/
 ├── Inc/
-│   ├── app_config.h        # Role selection (MASTER vs SLAVE), serial numbers
-│   ├── hw_init.h           # hw_init() prototype and extern huart2
-│   ├── lora_p2p.h          # Radio abstraction API
-│   └── uart_debug.h        # Debug printf over UART
+│   ├── app_config.h            # Role selection (MASTER vs SLAVE), serial numbers
+│   ├── hw_init.h               # hw_init() prototype and extern huart2
+│   ├── lora_p2p.h              # Radio abstraction API
+│   ├── uart_debug.h            # Debug printf over UART
+│   └── stm32wlxx_hal_conf.h    # HAL configuration (from ST template)
 ├── Src/
-│   ├── hw_init.c           # Clock (MSI 48 MHz), GPIO, USART2 — replaces CubeMX main
-│   ├── lora_p2p.c          # LoRa P2P driver over HAL_SUBGHZ (no middleware)
-│   ├── uart_debug.c        # UART implementation
-│   ├── main_master.c       # Master application (include ONLY this OR slave)
-│   └── main_slave.c        # Slave application
-├── KEIL_SETUP.md           # Step-by-step Keil setup guide + debug checklist
-└── Doc/
-    └── (this README)
+│   ├── hw_init.c               # Clock (MSI 48 MHz), GPIO, USART2 — replaces CubeMX main
+│   ├── lora_p2p.c              # LoRa P2P driver over HAL_SUBGHZ (no middleware)
+│   ├── uart_debug.c            # UART implementation
+│   ├── main_master.c           # Master application (include ONLY this OR slave)
+│   └── main_slave.c            # Slave application
+├── Drivers/                    # HAL & CMSIS from ST (downloaded separately, see BUILD_GUIDE.md)
+│   ├── STM32WLxx_HAL_Driver/   # HAL drivers (subghz, uart, rcc, gpio...)
+│   └── CMSIS/                  # Cortex-M4 Core + STM32WLE5 device headers + startup
+├── Makefile                    # Build via arm-none-eabi-gcc (Linux/macOS alternative to Keil)
+├── STM32WLE5XX_FLASH.ld        # GCC linker script
+├── KEIL_SETUP.md               # Step-by-step Keil setup guide + debug checklist
+├── BUILD_GUIDE.md              # Step-by-step GCC build guide for Linux
+└── README.md                   # This file
 ```
 
 ---
@@ -70,9 +76,14 @@ keil_c_port/
    - **Either** `Src/main_master.c` **or** `Src/main_slave.c` (not both — they both define `main()`).
 3. Add `Inc/` to **Options → C/C++ → Include Paths**.
 4. Remove or rename the CubeMX-generated `main.c` (it also defines `main()`).
-5. Confirm these standard HAL files are in Sources:  
-   `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_rcc.c`,  
-   `stm32wlxx_hal_gpio.c`, `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`
+5. Confirm these standard HAL files are in Sources:
+   `stm32wlxx_hal.c`, `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_uart_ex.c`,
+   `stm32wlxx_hal_rcc.c`, `stm32wlxx_hal_rcc_ex.c`, `stm32wlxx_hal_gpio.c`,
+   `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`, `stm32wlxx_hal_pwr_ex.c`,
+   `stm32wlxx_hal_dma.c`, `stm32wlxx_hal_flash.c`, `stm32wlxx_hal_flash_ex.c`
+
+> ⚠️ **Common mistake:** `dma`, `flash`, and `flash_ex` files are often forgotten.
+> Without them the linker will report `undefined reference` errors on internal HAL dependencies.
 
 ### Step 3 — Build & flash
 
@@ -90,6 +101,38 @@ keil_c_port/
 | SWDIO | PA13 | SWD header | Programming/debug |
 | SWCLK | PA14 | SWD header | Programming/debug |
 | SubGHz Radio | Internal | — | On-chip SX126x, no external SPI needed |
+
+---
+
+## Build Verification
+
+The code has been verified with `arm-none-eabi-gcc 13.2.1` on Linux — **0 errors, 0 warnings** (in application code).
+
+During verification, **3 bugs** in `lora_p2p.c` were found and fixed (incompatible names with current HAL version):
+
+| Was (wrong) | Now (correct) |
+|---|---|
+| `RadioSetCmd_TypeDef` | `SUBGHZ_RadioSetCmd_t` |
+| `RADIO_SET_DIO2ASRFSWITCH` | `RADIO_SET_RFSWITCHMODE` |
+| `RADIO_SET_DIOIRQPARAMS` | `RADIO_CFG_DIOIRQ` |
+
+### Building without Keil (Linux/macOS)
+
+If Keil is not available, you can verify compilation with GCC:
+
+```bash
+# Install (Ubuntu/Debian)
+sudo apt-get install gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+# Build
+cd keil_c_port
+make master   # Build Master (build/master/master_firmware.bin)
+make slave    # Build Slave  (build/slave/slave_firmware.bin)
+make all      # Build both
+make clean    # Clean
+```
+
+> Full instructions: **[BUILD_GUIDE.md](BUILD_GUIDE.md)**
 
 ---
 
