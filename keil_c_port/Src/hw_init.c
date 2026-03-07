@@ -24,9 +24,18 @@
 UART_HandleTypeDef huart2;
 
 /* --------------------------------------------------------------------------
+ * Error_Handler - required by CubeMX-generated stm32wlxx_hal_msp.c
+ * -------------------------------------------------------------------------- */
+void Error_Handler(void)
+{
+    __disable_irq();
+    while (1) { /* stay here */ }
+}
+
+/* --------------------------------------------------------------------------
  * SystemClock_Config - 48 MHz from MSI
  * -------------------------------------------------------------------------- */
-static void SystemClock_Config(void)
+void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef osc = {0};
     RCC_ClkInitTypeDef clk = {0};
@@ -51,7 +60,7 @@ static void SystemClock_Config(void)
 /* --------------------------------------------------------------------------
  * MX_GPIO_Init - enable port clocks (extend as needed)
  * -------------------------------------------------------------------------- */
-static void MX_GPIO_Init(void)
+void MX_GPIO_Init(void)
 {
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
@@ -61,7 +70,7 @@ static void MX_GPIO_Init(void)
 /* --------------------------------------------------------------------------
  * MX_USART2_UART_Init - PA2=TX, PA3=RX, 115200 8N1
  * -------------------------------------------------------------------------- */
-static void MX_USART2_UART_Init(void)
+void MX_USART2_UART_Init(void)
 {
     __HAL_RCC_USART2_CLK_ENABLE();
     __HAL_RCC_GPIOA_CLK_ENABLE();
