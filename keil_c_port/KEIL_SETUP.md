@@ -3,33 +3,54 @@
 Целевой чип: **STM32WLE5CC** (RAK3172)
 Подход: прямой HAL_SUBGHZ, **без SubGHz_Phy middleware**.
 
+> **Проверено:** Keil MDK v5.43a, ARM Compiler V6.24, STM32WLxx DFP.
+> Сборка: **0 errors**, 1 cosmetic warning.
+
 ---
 
-## 1. Создание CubeMX-проекта (с нуля)
+## 1. Установка и подготовка Keil
 
-1. Открыть STM32CubeMX → New Project → выбрать **STM32WLE5CCUx**
-2. **Connectivity → USART2** → Mode: `Asynchronous`
-   - Baud Rate: `115200`, Word Length: `8`, Parity: `None`, Stop Bits: `1`
-3. **Middleware → SubGHz_Phy** — **НЕ добавлять** (не нужен)
-4. **Project Manager**:
-   - Toolchain/IDE: `MDK-ARM`
-   - Min Version: `V5`
-5. **Generate Code**
+### 1.1. Установка Keil MDK
 
-> **Если уже есть готовый CubeMX-проект** — переходите сразу к шагу 2.
-> Убедитесь, что в нём нет SubGHz_Phy middleware в дереве файлов.
+Скачать установщик с сайта ARM (например, `MDK543a.exe`) и установить.
+
+### 1.2. Установка Device Family Pack
+
+После установки Keil автоматически откроется **Pack Installer**.
+Если нет — в µVision: **Pack → Pack Installer**.
+
+1. Слева в дереве Devices: **STMicroelectronics → STM32WL Series → STM32WLE5 → STM32WLE5CCUx**
+2. Справа найдите пакет **Keil::STM32WLxx_DFP** → нажмите **Install**
+3. Убедитесь, что **ARM::CMSIS** имеет статус "Up to date"
+4. Закройте Pack Installer
+
+### 1.3. Создание проекта в µVision
+
+1. Откройте **Keil µVision5** (это отдельное приложение от Pack Installer)
+2. **Project → New µVision Project...**
+3. Выберите папку `keil_c_port/` и имя проекта
+4. В диалоге выбора чипа: в поле **Search** введите `STM32WLE5` → выберите **STM32WLE5CCUx**
+5. В диалоге "Manage Run-Time Environment" — нажмите **Cancel**
+   (мы добавим файлы вручную)
+
+> **Если CubeMX уже есть** — переходите к шагу 6 (внизу).
 
 ---
 
 ## 2. Добавить файлы порта в проект
 
-В Keil: правой кнопкой по группе в Project Explorer → **Add Existing Files**.
+**Project → Manage → Project Items...** (Ctrl+Shift+3)
 
-### Файлы из папки `keil_c_port/Src/`:
+Создайте **3 группы** (кнопка New/Insert):
+- `Application`
+- `HAL_Driver`
+- `CMSIS`
+
+### Группа Application — файлы из `keil_c_port/Src/`:
 
 | Файл | Назначение |
 |---|---|
-| `hw_init.c` | Тактирование (MSI 48 МГц), GPIO, USART2, `huart2` |
+| `hw_init.c` | Тактирование (MSI 48 МГц), GPIO, USART2, `huart2`, `Error_Handler` |
 | `lora_p2p.c` | LoRa P2P драйвер поверх HAL_SUBGHZ |
 | `uart_debug.c` | Отладочный вывод через UART |
 | `main_master.c` | Прошивка Master **— только одно из двух** |
@@ -38,74 +59,129 @@
 > `main_master.c` и `main_slave.c` оба определяют `main()`.
 > В проект добавлять **строго один** из них.
 
+> **Важно:** `hw_init.c` экспортирует символы `SystemClock_Config`, `MX_GPIO_Init`,
+> `MX_USART2_UART_Init`, `Error_Handler` и `huart2`, которые нужны линковщику.
+
 ---
 
-## 3. Include Paths
+## 3. Include Paths и Define
 
-`Options for Target → C/C++ → Include Paths` — добавить:
+**Alt+F7** → вкладка **C/C++ (AC6)**
+
+### Define
 
 ```
-../keil_c_port/Inc
+STM32WLE5xx, USE_HAL_DRIVER
 ```
 
-или абсолютный путь до папки `Inc/`, если структура другая.
+### Include Paths
+
+Нажмите кнопку `...` рядом с Include Paths и добавьте 4 пути:
+
+```
+.\Inc
+.\Drivers\STM32WLxx_HAL_Driver\Inc
+.\Drivers\CMSIS\Device\ST\STM32WLxx\Include
+.\Drivers\CMSIS\Core\Include
+```
+
+> Если проект создан не в папке `keil_c_port/` — замените `.\` на
+> соответствующий относительный путь.
 
 Проверить, что компилятор находит:
 
-- `lora_p2p.h`
-- `uart_debug.h`
-- `app_config.h`
-- `hw_init.h`
-- `stm32wlxx_hal.h` (из STM32CubeWL HAL)
+- `lora_p2p.h`, `uart_debug.h`, `app_config.h`, `hw_init.h`
+- `stm32wlxx_hal.h` (из HAL)
 - `stm32wlxx_hal_conf.h` — **обязательный файл конфигурации HAL**
 
 > **Важно:** HAL ищет файл `stm32wlxx_hal_conf.h` в Include Paths.
-> Если CubeMX его не сгенерировал, скопируйте шаблон:
+> В папке `Inc/` он уже есть. Если нет — скопируйте шаблон:
 > ```
 > Drivers/STM32WLxx_HAL_Driver/Inc/stm32wlxx_hal_conf_template.h
 >   → Inc/stm32wlxx_hal_conf.h
 > ```
-> Шаблон включает все модули по умолчанию — этого достаточно.
 
 ---
 
-## 4. Обязательные HAL-файлы в проекте
+## 4. HAL-файлы и CMSIS (группы HAL_Driver и CMSIS)
 
-Убедиться, что в Sources присутствуют (обычно добавляет CubeMX):
+### Группа HAL_Driver
 
-```
-Drivers/STM32WLxx_HAL_Driver/Src/
-    stm32wlxx_hal.c            # Базовый HAL (HAL_Init, HAL_Delay, SysTick)
-    stm32wlxx_hal_cortex.c     # NVIC, SysTick
-    stm32wlxx_hal_rcc.c        # Тактирование
-    stm32wlxx_hal_rcc_ex.c     # Расширенное тактирование
-    stm32wlxx_hal_gpio.c       # GPIO
-    stm32wlxx_hal_uart.c       # UART (отладочный вывод)
-    stm32wlxx_hal_uart_ex.c    # UART расширенный
-    stm32wlxx_hal_subghz.c     # SubGHz SPI к радиомодулю SX126x
-    stm32wlxx_hal_pwr.c        # Управление питанием
-    stm32wlxx_hal_pwr_ex.c     # Управление питанием расширенный
-    stm32wlxx_hal_dma.c        # DMA (зависимость HAL)
-    stm32wlxx_hal_flash.c      # Flash (зависимость HAL)
-    stm32wlxx_hal_flash_ex.c   # Flash расширенный
-```
-
-> **Внимание:** `stm32wlxx_hal_dma.c`, `stm32wlxx_hal_flash.c` и `stm32wlxx_hal_flash_ex.c`
-> часто забывают добавить. Без них линковщик выдаст `undefined reference` на функции,
-> которые вызываются внутри других HAL-модулей.
-
-CMSIS и startup также должны присутствовать:
+Добавить из `Drivers/STM32WLxx_HAL_Driver/Src/` (**все 13 файлов**):
 
 ```
-Core/Src/system_stm32wlxx.c
-startup_stm32wle5xx.s          (или .s в зависимости от версии)
+stm32wlxx_hal.c            # Базовый HAL (HAL_Init, HAL_Delay, SysTick)
+stm32wlxx_hal_cortex.c     # NVIC, SysTick
+stm32wlxx_hal_rcc.c        # Тактирование
+stm32wlxx_hal_rcc_ex.c     # Расширенное тактирование
+stm32wlxx_hal_gpio.c       # GPIO
+stm32wlxx_hal_uart.c       # UART (отладочный вывод)
+stm32wlxx_hal_uart_ex.c    # UART расширенный
+stm32wlxx_hal_subghz.c     # SubGHz SPI к радиомодулю SX126x
+stm32wlxx_hal_pwr.c        # Управление питанием
+stm32wlxx_hal_pwr_ex.c     # Управление питанием расширенный
+stm32wlxx_hal_dma.c        # DMA (зависимость HAL)
+stm32wlxx_hal_flash.c      # Flash (зависимость HAL)
+stm32wlxx_hal_flash_ex.c   # Flash расширенный
 ```
+
+> **Внимание:** Если забыть любой из этих файлов — линковщик выдаст
+> `L6218E: Undefined symbol HAL_...` ошибки.
+
+### Группа CMSIS
+
+Добавить из `Drivers/CMSIS/Device/ST/STM32WLxx/`:
+
+```
+system_stm32wlxx.c
+startup_stm32wle5xx_keil.s     # Startup для Keil (ARM Compiler 6)
+```
+
+> **ВАЖНО:** В репозитории есть **два** startup-файла:
+> - `startup_stm32wle5xx.s` — для **GCC** (Linux/Makefile)
+> - `startup_stm32wle5xx_keil.s` — для **Keil** (ARM Compiler 5/6)
+>
+> В Keil используйте **только** `startup_stm32wle5xx_keil.s`!
+> GCC-версия не совместима с ARM Compiler и вызовет ошибки линковки.
 
 ---
 
-## 5. Удалить SubGHz_Phy middleware
+## 5. Настройки линковщика и Target
 
-Если middleware уже был добавлен — удалить из проекта (или исключить из сборки):
+**Alt+F7** → вкладка **Linker**:
+
+- Поставьте галочку **"Use Memory Layout from Target Dialog"**
+- Поле **Scatter File** оставьте пустым
+
+**Alt+F7** → вкладка **Target**:
+
+- **IROM1:** Start = `0x8000000`, Size = `0x40000` (256 КБ Flash)
+- **IRAM1:** Start = `0x20000000`, Size = `0x8000` (или `0x10000`)
+
+> Keil автоматически сгенерирует scatter-файл на основе этих адресов.
+
+---
+
+## 6. Сборка
+
+**Project → Rebuild All Target Files** (или **F7**)
+
+Ожидаемый результат:
+```
+Program Size: Code=21588 RO-data=1924 RW-data=12 ZI-data=2100
+"...\rak-prj.axf" - 0 Error(s), 1 Warning(s).
+```
+
+> Warning `--target=armv7em-arm-none-eabi is not supported` — это
+> косметическое предупреждение ARM Compiler V6.24, не влияет на результат.
+
+Для генерации `.hex` файла: **Alt+F7 → Output → Create HEX File** ✓
+
+---
+
+## 7. Удалить SubGHz_Phy middleware (если есть)
+
+Если middleware был добавлен ранее — удалить из проекта:
 
 ```
 Middlewares/Third_Party/SubGHz_Phy/    <- удалить всю группу
@@ -120,7 +196,7 @@ SubGHz_Phy/Target/                      <- удалить
 
 ---
 
-## 6. Если используется CubeMX-проект (main.c уже есть)
+## 8. Если используется CubeMX-проект (main.c уже есть)
 
 В этом случае `hw_init.c` **не нужен**. Вместо этого:
 
@@ -145,10 +221,11 @@ SubGHz_Phy/Target/                      <- удалить
 3. `MX_SubGHz_Init()` — **не вызывать** (lora_p2p_init() делает всё сам)
 4. Убедиться, что в вашем `main.c` от CubeMX **нет** своего `main()` —
    либо удалить его, либо переименовать CubeMX-файл
+5. Startup-файл: используйте тот, что сгенерировал CubeMX (он уже в формате ARM Compiler)
 
 ---
 
-## 7. Master / Slave — выбор роли
+## 9. Master / Slave — выбор роли
 
 В файле `Inc/app_config.h`:
 
@@ -164,7 +241,7 @@ APP_ROLE_MASTER=1
 
 ---
 
-## 8. TCXO — если радио не инициализируется
+## 10. TCXO — если радио не инициализируется
 
 По умолчанию `lora_p2p.c` выставляет напряжение TCXO = **3.0 В** (код `0x06`).
 Если ваш модуль использует другое напряжение — добавьте дефайн:
@@ -183,7 +260,7 @@ Options → C/C++ → Define:  LORA_TCXO_VOLTAGE=0x07
 
 ---
 
-## 9. Известные исправления (найдены при верификации сборки)
+## 11. Известные исправления (найдены при верификации сборки)
 
 При проверке кода кросс-компилятором `arm-none-eabi-gcc` на Linux были обнаружены
 и исправлены **3 ошибки** в `lora_p2p.c`. Эти же ошибки возникли бы и в Keil.
@@ -203,7 +280,7 @@ Options → C/C++ → Define:  LORA_TCXO_VOLTAGE=0x07
 
 ---
 
-## 10. Альтернатива Keil — проверка сборки через GCC на Linux/macOS
+## 12. Альтернатива Keil — проверка сборки через GCC на Linux/macOS
 
 Если Keil недоступен (например, на Linux/macOS), можно верифицировать код
 тем же ARM-компилятором через командную строку.
@@ -237,6 +314,10 @@ Makefile автоматически подтягивает HAL-драйверы 
 - **0 errors** = код гарантированно соберётся и в Keil
 - Те же ошибки типов, пропущенных include, несовместимых аргументов
 - Можно запускать в CI/CD для автоматической проверки
+
+> **Примечание:** Makefile использует `startup_stm32wle5xx.s` (GCC-формат),
+> а Keil использует `startup_stm32wle5xx_keil.s` (ARM Compiler формат).
+> Оба файла находятся в `Drivers/CMSIS/Device/ST/STM32WLxx/`.
 
 ---
 

@@ -27,6 +27,16 @@ extern "C" {
  */
 void hw_init(void);
 
+/* Individual init functions (also called internally by hw_init).
+ * Exported so that main_master.c / main_slave.c extern declarations
+ * resolve correctly when hw_init.c is in the project. */
+void SystemClock_Config(void);
+void MX_GPIO_Init(void);
+void MX_USART2_UART_Init(void);
+
+/* Error_Handler required by CubeMX-generated stm32wlxx_hal_msp.c */
+void Error_Handler(void);
+
 /* huart2 used by uart_debug.c */
 extern UART_HandleTypeDef huart2;
 

@@ -35,7 +35,7 @@ keil_c_port/
 │   ├── uart_debug.h            # Debug printf через UART
 │   └── stm32wlxx_hal_conf.h    # Конфигурация HAL (из шаблона ST)
 ├── Src/
-│   ├── hw_init.c               # Тактирование (MSI 48 МГц), GPIO, USART2
+│   ├── hw_init.c               # Тактирование (MSI 48 МГц), GPIO, USART2, Error_Handler
 │   ├── lora_p2p.c              # LoRa P2P драйвер поверх HAL_SUBGHZ (без middleware)
 │   ├── uart_debug.c            # Реализация UART
 │   ├── main_master.c           # Приложение Master (включать ТОЛЬКО его ИЛИ slave)
@@ -43,6 +43,9 @@ keil_c_port/
 ├── Drivers/                    # HAL и CMSIS от ST (скачиваются отдельно, см. BUILD_GUIDE.md)
 │   ├── STM32WLxx_HAL_Driver/   # HAL драйверы (subghz, uart, rcc, gpio...)
 │   └── CMSIS/                  # Cortex-M4 Core + STM32WLE5 device headers + startup
+│       └── Device/ST/STM32WLxx/
+│           ├── startup_stm32wle5xx.s       # Startup для GCC (Makefile)
+│           └── startup_stm32wle5xx_keil.s  # Startup для Keil (ARM Compiler 5/6)
 ├── Makefile                    # Сборка через arm-none-eabi-gcc (Linux/macOS альтернатива Keil)
 ├── STM32WLE5XX_FLASH.ld        # Linker script для GCC
 ├── KEIL_SETUP.md               # Пошаговая инструкция по настройке Keil + отладка
@@ -56,43 +59,38 @@ keil_c_port/
 
 > 📄 Подробная пошаговая инструкция с разделом отладки: **[KEIL_SETUP.md](KEIL_SETUP.md)**
 
-### Шаг 1 — Генерация базового проекта в STM32CubeMX
+> **Проверено:** Keil MDK v5.43a, ARM Compiler V6.24 — сборка **0 errors**.
 
-1. Откройте STM32CubeMX, создайте новый проект для **STM32WLE5CCU6** (MCU внутри RAK3172).
-2. Включите периферию:
-   - **USART2**: Asynchronous, 115200 baud, 8N1 (отладочный вывод через ST-Link VCP)
-   - **RTC** (опционально, для меток времени)
-3. **SubGHz_Phy middleware — НЕ добавлять.** Драйвер `lora_p2p.c` работает напрямую с HAL_SUBGHZ и не требует middleware.
-4. Установите **Project Manager → Toolchain** в **MDK-ARM** (Keil).
-5. **Generate Code**.
+### Вариант A — Standalone (без CubeMX, рекомендуется)
 
-### Шаг 2 — Добавление файлов порта
+1. Установите **Keil MDK** и пакет **Keil::STM32WLxx_DFP** через Pack Installer.
+2. **Project → New µVision Project** → выберите чип **STM32WLE5CCUx**.
+3. Создайте 3 группы файлов (**Project → Manage → Project Items**):
+   - **Application:** `hw_init.c`, `lora_p2p.c`, `uart_debug.c`, `main_master.c` или `main_slave.c`
+   - **HAL_Driver:** 13 файлов из `Drivers/STM32WLxx_HAL_Driver/Src/` (hal, cortex, rcc, rcc_ex, gpio, uart, uart_ex, subghz, pwr, pwr_ex, dma, flash, flash_ex)
+   - **CMSIS:** `system_stm32wlxx.c` + **`startup_stm32wle5xx_keil.s`** (не GCC-версия!)
+4. **Options (Alt+F7):**
+   - **C/C++ → Define:** `STM32WLE5xx, USE_HAL_DRIVER`
+   - **C/C++ → Include Paths:** `.\Inc`, `.\Drivers\STM32WLxx_HAL_Driver\Inc`, `.\Drivers\CMSIS\Device\ST\STM32WLxx\Include`, `.\Drivers\CMSIS\Core\Include`
+   - **Linker:** галочка "Use Memory Layout from Target Dialog"
+5. **F7** — собрать.
 
-1. В Keil µVision откройте сгенерированный `.uvprojx`.
-2. Добавьте в **Source Group**:
-   - `Src/hw_init.c` *(не нужен, если используете CubeMX-проект с готовым `main.c`)*
-   - `Src/lora_p2p.c`
-   - `Src/uart_debug.c`
-   - **Либо** `Src/main_master.c` **либо** `Src/main_slave.c` (не оба — оба определяют `main()`).
-3. Добавьте `Inc/` в **Options → C/C++ → Include Paths**.
-4. Удалите или переименуйте сгенерированный CubeMX файл `main.c` (он тоже определяет `main()`).
-5. Убедитесь, что в **Sources** есть стандартные HAL-файлы:
-   `stm32wlxx_hal.c`, `stm32wlxx_hal_subghz.c`, `stm32wlxx_hal_uart.c`, `stm32wlxx_hal_uart_ex.c`,
-   `stm32wlxx_hal_rcc.c`, `stm32wlxx_hal_rcc_ex.c`, `stm32wlxx_hal_gpio.c`,
-   `stm32wlxx_hal_cortex.c`, `stm32wlxx_hal_pwr.c`, `stm32wlxx_hal_pwr_ex.c`,
-   `stm32wlxx_hal_dma.c`, `stm32wlxx_hal_flash.c`, `stm32wlxx_hal_flash_ex.c`
+> ⚠️ **Два startup-файла:** `startup_stm32wle5xx.s` — для GCC, `startup_stm32wle5xx_keil.s` — для Keil.
+> В Keil использовать **только** `_keil.s`, иначе будут ошибки линковки.
 
-> ⚠️ **Частая ошибка:** файлы `dma`, `flash`, `flash_ex` часто забывают добавить.
-> Без них линковщик выдаст `undefined reference` на внутренние зависимости HAL.
+### Вариант B — CubeMX-проект (если уже есть)
 
-### Шаг 3 — Сборка и прошивка
+1. Откройте сгенерированный `.uvprojx` в Keil.
+2. Добавьте `lora_p2p.c`, `uart_debug.c` и один из `main_*.c`.
+3. **`hw_init.c` не нужен** — CubeMX генерирует свою инициализацию.
+4. Удалите или переименуйте CubeMX-файл `main.c` (он тоже определяет `main()`).
+5. Убедитесь, что SubGHz_Phy middleware **не добавлен**.
 
-- Соберите проект: **Project → Build Target** (F7).
-- Прошейте через **Debug → Start/Stop Debug Session**, используя ST-Link, подключённый к SWD-пинам RAK3172.
+### Сборка и прошивка
 
----
-
-## Распиновка (RAK3172 / STM32WLE5CC)
+- Соберите проект: **F7**.
+- Для `.hex` файла: **Options → Output → Create HEX File** ✓
+- Прошейте через **Debug → Start/Stop Debug Session** (ST-Link к SWD-пинам RAK3172).
 
 | Функция | STM32 Pin | RAK3172 Pin | Примечание |
 |---|---|---|---|
@@ -106,9 +104,14 @@ keil_c_port/
 
 ## Верификация сборки
 
-Код проверен кросс-компилятором `arm-none-eabi-gcc 13.2.1` на Linux — **0 ошибок, 0 предупреждений** (в коде приложения).
+Код проверен на **двух** тулчейнах:
 
-При верификации были найдены и исправлены **3 бага** в `lora_p2p.c` (несовместимость с актуальной версией HAL):
+| Тулчейн | ОС | Результат |
+|---|---|---|
+| `arm-none-eabi-gcc 13.2.1` | Linux (Ubuntu) | **0 errors, 0 warnings** |
+| ARM Compiler V6.24 (Keil MDK v5.43a) | Windows | **0 errors, 1 cosmetic warning** |
+
+Pri верификации были найдены и исправлены **3 бага** в `lora_p2p.c` (несовместимость с актуальной версией HAL):
 
 | Было (неправильно) | Стало (правильно) |
 |---|---|

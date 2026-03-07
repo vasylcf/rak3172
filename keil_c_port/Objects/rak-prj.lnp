@@ -1,0 +1,24 @@
+--cpu=Cortex-M4 --fpu=SoftVFP
+".\objects\hw_init.o"
+".\objects\lora_p2p.o"
+".\objects\main_master.o"
+".\objects\uart_debug.o"
+".\objects\stm32wlxx_hal.o"
+".\objects\stm32wlxx_hal_cortex.o"
+".\objects\stm32wlxx_hal_rcc.o"
+".\objects\stm32wlxx_hal_rcc_ex.o"
+".\objects\stm32wlxx_hal_dma.o"
+".\objects\stm32wlxx_hal_flash.o"
+".\objects\stm32wlxx_hal_flash_ex.o"
+".\objects\stm32wlxx_hal_gpio.o"
+".\objects\stm32wlxx_hal_uart.o"
+".\objects\stm32wlxx_hal_uart_ex.o"
+".\objects\stm32wlxx_hal_subghz.o"
+".\objects\stm32wlxx_hal_pwr.o"
+".\objects\stm32wlxx_hal_pwr_ex.o"
+".\objects\system_stm32wlxx.o"
+".\objects\startup_stm32wle5xx_keil.o"
+--strict --scatter ".\Objects\rak-prj.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list ".\Listings\rak-prj.map" -o .\Objects\rak-prj.axf
