@@ -198,10 +198,43 @@ SubGHz_Phy/Target/                      <- удалить
 
 ## 8. Если используется CubeMX-проект (main.c уже есть)
 
-В этом случае `hw_init.c` **не нужен**. Вместо этого:
+В этом случае `hw_init.c` **можно не добавлять**, но только при соблюдении
+условий ниже. Если хоть одно не выполнено — **добавьте `hw_init.c` обратно**,
+это самый простой путь (он не конфликтует с CubeMX-файлами).
 
-1. Удалить `hw_init.c` из Sources
-2. В `main_master.c` / `main_slave.c` заменить:
+### Что заменяет hw_init.c
+
+`hw_init.c` определяет 5 символов, которые нужны другим файлам:
+
+| Символ | Кто использует | Что произойдёт без него |
+|---|---|---|
+| `huart2` | `uart_debug.c` (`extern`) | **`L6218E: Undefined symbol huart2`** |
+| `SystemClock_Config()` | `main_master.c` / `main_slave.c` | `L6218E: Undefined symbol SystemClock_Config` |
+| `MX_GPIO_Init()` | `main_master.c` / `main_slave.c` | `L6218E: Undefined symbol MX_GPIO_Init` |
+| `MX_USART2_UART_Init()` | `main_master.c` / `main_slave.c` | `L6218E: Undefined symbol MX_USART2_UART_Init` |
+| `Error_Handler()` | `stm32wlxx_hal_msp.c` (CubeMX) | `L6218E: Undefined symbol Error_Handler` |
+
+### Если вы удаляете hw_init.c — убедитесь, что:
+
+1. **`usart.c` есть в проекте** — CubeMX генерирует его **только если USART2
+   включён** (Connectivity → USART2 → Asynchronous). Именно `usart.c` определяет
+   переменную `UART_HandleTypeDef huart2;`.
+
+   > ⚠️ **Самая частая ошибка:** USART2 не был включён в CubeMX, файл `usart.c`
+   > не сгенерирован, `huart2` нигде не определён →
+   > **`L6218E: Undefined symbol huart2`**
+
+   Проверьте Build Output — должна быть строка `compiling usart.c...`.
+   Если её нет — файл не в проекте.
+
+2. **`main.c` (от CubeMX) содержит** `SystemClock_Config()`, `MX_GPIO_Init()`,
+   `Error_Handler()` — они генерируются автоматически.
+
+3. **`main.c` не определяет свой `main()`** — если вы используете `main_master.c`
+   или `main_slave.c`, в CubeMX-файле `main.c` удалите или закомментируйте
+   функцию `int main(void)`, иначе будет `L6200E: Symbol main multiply defined`.
+
+4. В `main_master.c` / `main_slave.c` замените:
    ```c
    #include "hw_init.h"
    // ...
@@ -218,10 +251,16 @@ SubGHz_Phy/Target/                      <- удалить
    MX_GPIO_Init();
    MX_USART2_UART_Init();
    ```
-3. `MX_SubGHz_Init()` — **не вызывать** (lora_p2p_init() делает всё сам)
-4. Убедиться, что в вашем `main.c` от CubeMX **нет** своего `main()` —
-   либо удалить его, либо переименовать CubeMX-файл
-5. Startup-файл: используйте тот, что сгенерировал CubeMX (он уже в формате ARM Compiler)
+
+5. `MX_SubGHz_Init()` — **не вызывать** (lora_p2p_init() делает всё сам)
+
+6. Startup-файл: используйте тот, что сгенерировал CubeMX (он уже в формате
+   ARM Compiler)
+
+### Если сомневаетесь — просто добавьте hw_init.c
+
+Это безопасный вариант: все 5 символов будут определены, конфликтов с CubeMX
+не возникнет. Функции в `hw_init.c` имеют те же сигнатуры, что и CubeMX-версии.
 
 ---
 
