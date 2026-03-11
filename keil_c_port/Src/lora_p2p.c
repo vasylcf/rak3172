@@ -27,7 +27,11 @@
 
 #include "lora_p2p.h"
 #include "stm32wlxx_hal.h"
+#include "uart_debug.h"
 #include <string.h>
+
+/* 1 = extra debug prints in IRQ path (disable for production) */
+#define LORA_P2P_DEBUG  1
 
 /* ==========================================================================
  * SX126x constants
@@ -259,11 +263,20 @@ bool lora_p2p_init(const lora_p2p_config_t *cfg)
 
     s_hsubghz.Init.BaudratePrescaler = SUBGHZSPI_BAUDRATEPRESCALER_4;
     if (HAL_SUBGHZ_Init(&s_hsubghz) != HAL_OK) {
+#if LORA_P2P_DEBUG
+        debug_println("[LORA] HAL_SUBGHZ_Init FAILED");
+#endif
         return false;
     }
+#if LORA_P2P_DEBUG
+    debug_println("[LORA] HAL_SUBGHZ_Init OK");
+#endif
 
     HAL_NVIC_SetPriority(SUBGHZ_Radio_IRQn, 1U, 0U);
     HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn);
+#if LORA_P2P_DEBUG
+    debug_println("[LORA] NVIC enabled for SUBGHZ_Radio_IRQn");
+#endif
 
     /*
      * SX126x init sequence:
@@ -338,6 +351,9 @@ void lora_p2p_irq_process(void)
          * re-fire endlessly; the main-loop path below re-enables it
          * after clearing the radio IRQ.                                */
         HAL_NVIC_DisableIRQ(SUBGHZ_Radio_IRQn);
+#if LORA_P2P_DEBUG
+        debug_putchar('!');
+#endif
         return;
     }
 
@@ -347,6 +363,10 @@ void lora_p2p_irq_process(void)
     uint16_t irq = sx_get_irq();
     sx_clear_irq(irq);                 /* DIO1 → low */
     HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn); /* safe to re-arm now */
+
+#if LORA_P2P_DEBUG
+    debug_printf("[LORA] IRQ=0x%04X\r\n", irq);
+#endif
 
     if (irq & SX_IRQ_TX_DONE) {
         if (s_tx_cb) s_tx_cb();
