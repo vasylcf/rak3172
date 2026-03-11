@@ -332,6 +332,12 @@ void lora_p2p_irq_process(void)
 {
     if (__get_IPSR() != 0U) {   /* called from ISR */
         s_irq_pending = 1U;
+        /* EXTI 44 is a direct (level-sensitive) line.  DIO1 stays high
+         * until the SX126x IRQ is cleared via SPI, which we do NOT do
+         * from ISR context.  Mask the NVIC line so the ISR does not
+         * re-fire endlessly; the main-loop path below re-enables it
+         * after clearing the radio IRQ.                                */
+        HAL_NVIC_DisableIRQ(SUBGHZ_Radio_IRQn);
         return;
     }
 
@@ -339,7 +345,8 @@ void lora_p2p_irq_process(void)
     s_irq_pending = 0U;
 
     uint16_t irq = sx_get_irq();
-    sx_clear_irq(irq);
+    sx_clear_irq(irq);                 /* DIO1 → low */
+    HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn); /* safe to re-arm now */
 
     if (irq & SX_IRQ_TX_DONE) {
         if (s_tx_cb) s_tx_cb();
