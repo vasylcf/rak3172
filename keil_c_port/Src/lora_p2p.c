@@ -33,6 +33,31 @@
 /* 1 = extra debug prints in IRQ path (disable for production) */
 #define LORA_P2P_DEBUG  1
 
+#if LORA_P2P_DEBUG
+/** Read SX126x status byte: bits[6:4]=chipMode, bits[3:1]=cmdStatus */
+static uint8_t dbg_get_status(void)
+{
+    uint8_t st = 0;
+    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &st, 1U);
+    return st;
+}
+/** Read SX126x device error flags (2 bytes, LE) */
+static uint16_t dbg_get_errors(void)
+{
+    uint8_t e[2] = {0};
+    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_ERROR, e, 2U);
+    return ((uint16_t)e[0] << 8) | e[1];
+}
+static void dbg_step(const char *label)
+{
+    uint8_t  st  = dbg_get_status();
+    uint16_t err = dbg_get_errors();
+    debug_printf("[LORA] %-18s  st=0x%02X  err=0x%04X\r\n", label, st, err);
+}
+#else
+#define dbg_step(x)  ((void)0)
+#endif
+
 /* ==========================================================================
  * SX126x constants
  * ========================================================================== */
@@ -285,15 +310,20 @@ bool lora_p2p_init(const lora_p2p_config_t *cfg)
      *   -> packet params -> buffer base -> DIO2 RF switch -> DIO IRQ
      */
     sx_set_standby(SX_STDBY_RC);
+    dbg_step("STANDBY_RC");
     sx_set_tcxo();
+    dbg_step("SET_TCXO");
     HAL_Delay(10U);
 
     sx_calibrate_all();
+    dbg_step("CALIBRATE_ALL");
     sx_set_regulator_dcdc();
+    dbg_step("SET_DCDC");
     sx_set_pkt_type_lora();
 
     sx_set_frequency(s_cfg.frequency);
     sx_calibrate_image();
+    dbg_step("CAL_IMAGE+FREQ");
     HAL_Delay(3U);
 
     sx_set_pa_hp();
@@ -303,6 +333,7 @@ bool lora_p2p_init(const lora_p2p_config_t *cfg)
     sx_set_buf_base();
     sx_set_dio2_rf_switch();
     sx_set_dio_irq();
+    dbg_step("INIT_DONE");
 
     return true;
 }
@@ -316,6 +347,7 @@ bool lora_p2p_receive(uint32_t timeout_ms)
 {
     sx_set_pkt_params(0xFFU);
     sx_start_rx(timeout_ms);
+    dbg_step("START_RX");
     return true;
 }
 
