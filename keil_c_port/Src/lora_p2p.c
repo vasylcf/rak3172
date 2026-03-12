@@ -357,7 +357,27 @@ void lora_p2p_irq_process(void)
         return;
     }
 
-    if (!s_irq_pending) return;
+    if (!s_irq_pending) {
+#if LORA_P2P_DEBUG
+        /* Poll radio status every ~10 calls (~5 s at 500 ms loop) */
+        static uint32_t dbg_poll = 0;
+        if (++dbg_poll >= 10U) {
+            dbg_poll = 0U;
+            uint16_t poll_irq = sx_get_irq();
+            uint8_t  opmode   = 0;
+            HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &opmode, 1U);
+            debug_printf("[LORA] POLL irq=0x%04X mode=0x%02X pend=%u\r\n",
+                         poll_irq, opmode, s_irq_pending);
+            /* If radio has pending IRQ bits but NVIC never fired,
+             * process them right here so we can at least see what happens */
+            if (poll_irq != 0U) {
+                debug_println("[LORA] POLL: forcing IRQ processing!");
+                s_irq_pending = 1U;
+            }
+        }
+#endif
+        return;
+    }
     s_irq_pending = 0U;
 
     uint16_t irq = sx_get_irq();
