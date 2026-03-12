@@ -33,31 +33,6 @@
 /* 1 = extra debug prints in IRQ path (disable for production) */
 #define LORA_P2P_DEBUG  1
 
-#if LORA_P2P_DEBUG
-/** Read SX126x status byte: bits[6:4]=chipMode, bits[3:1]=cmdStatus */
-static uint8_t dbg_get_status(void)
-{
-    uint8_t st = 0;
-    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &st, 1U);
-    return st;
-}
-/** Read SX126x device error flags (2 bytes, LE) */
-static uint16_t dbg_get_errors(void)
-{
-    uint8_t e[2] = {0};
-    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_ERROR, e, 2U);
-    return ((uint16_t)e[0] << 8) | e[1];
-}
-static void dbg_step(const char *label)
-{
-    uint8_t  st  = dbg_get_status();
-    uint16_t err = dbg_get_errors();
-    debug_printf("[LORA] %-18s  st=0x%02X  err=0x%04X\r\n", label, st, err);
-}
-#else
-#define dbg_step(x)  ((void)0)
-#endif
-
 /* ==========================================================================
  * SX126x constants
  * ========================================================================== */
@@ -94,12 +69,12 @@ static void dbg_step(const char *label)
 
 /* TCXO on DIO3 */
 #ifndef LORA_TCXO_VOLTAGE
-#  define LORA_TCXO_VOLTAGE     0x06U   /* 3.0 V */
+#  define LORA_TCXO_VOLTAGE     0x01U   /* 1.7 V — standard for RAK3172 */
 #endif
-/* Stabilisation timeout: 5 ms / 15.625 us = 320 = 0x000140 */
+/* Stabilisation timeout: 10 ms / 15.625 us = 640 = 0x000280 */
 #define TCXO_TO_HI              0x00U
-#define TCXO_TO_MID             0x01U
-#define TCXO_TO_LO              0x40U
+#define TCXO_TO_MID             0x02U
+#define TCXO_TO_LO              0x80U
 
 /* Image calibration for 868 MHz band */
 #define CAL_IMG_F1              0xD7U
@@ -133,6 +108,31 @@ static volatile uint8_t s_irq_pending = 0U;
 
 #define RX_BUF_SIZE  256U
 static uint8_t s_rx_buf[RX_BUF_SIZE];
+
+#if LORA_P2P_DEBUG
+/** Read SX126x status byte: bits[6:4]=chipMode, bits[3:1]=cmdStatus */
+static uint8_t dbg_get_status(void)
+{
+    uint8_t st = 0;
+    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &st, 1U);
+    return st;
+}
+/** Read SX126x device error flags (2 bytes, LE) */
+static uint16_t dbg_get_errors(void)
+{
+    uint8_t e[2] = {0};
+    HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_ERROR, e, 2U);
+    return ((uint16_t)e[0] << 8) | e[1];
+}
+static void dbg_step(const char *label)
+{
+    uint8_t  st  = dbg_get_status();
+    uint16_t err = dbg_get_errors();
+    debug_printf("[LORA] %-18s  st=0x%02X  err=0x%04X\r\n", label, st, err);
+}
+#else
+#define dbg_step(x)  ((void)0)
+#endif
 
 /* ==========================================================================
  * SX126x low-level wrappers  (all blocking, use HAL SUBGHZ SPI)
@@ -313,7 +313,7 @@ bool lora_p2p_init(const lora_p2p_config_t *cfg)
     dbg_step("STANDBY_RC");
     sx_set_tcxo();
     dbg_step("SET_TCXO");
-    HAL_Delay(10U);
+    HAL_Delay(20U);                /* wait for TCXO to stabilise */
 
     sx_calibrate_all();
     dbg_step("CALIBRATE_ALL");
