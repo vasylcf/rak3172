@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -lh /c/Users/vasyl/apps/rak3172/keil_c_port/*.uvprojx /c/Users/vasyl/apps/rak3172/keil_c_port/*.uvoptx 2>/dev/null)"
+    ]
+  }
+}
