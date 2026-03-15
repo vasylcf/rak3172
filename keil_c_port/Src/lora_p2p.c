@@ -357,26 +357,24 @@ void lora_p2p_irq_process(void)
          * re-fire endlessly; the main-loop path below re-enables it
          * after clearing the radio IRQ.                                */
         HAL_NVIC_DisableIRQ(SUBGHZ_Radio_IRQn);
-#if LORA_P2P_DEBUG
-        debug_putchar('!');
-#endif
         return;
     }
 
     if (!s_irq_pending) {
 #if LORA_P2P_DEBUG
-        /* Poll radio status every ~10 calls (~5 s at 500 ms loop) */
-        static uint32_t dbg_poll = 0;
-        if (++dbg_poll >= 10U) {
-            dbg_poll = 0U;
+        /* Poll radio IRQ as a fallback — only print when something is wrong */
+        static uint32_t dbg_poll_tick = 0;
+        uint32_t now = HAL_GetTick();
+        if (now - dbg_poll_tick >= 5000U) {
+            dbg_poll_tick = now;
             uint16_t poll_irq = sx_get_irq();
-            uint8_t  opmode   = 0;
-            HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &opmode, 1U);
-            debug_printf("[LORA] POLL irq=0x%04X mode=0x%02X pend=%u\r\n",
-                         poll_irq, opmode, s_irq_pending);
             /* If radio has pending IRQ bits but NVIC never fired,
              * process them right here so we can at least see what happens */
             if (poll_irq != 0U) {
+                uint8_t  opmode   = 0;
+                HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_STATUS, &opmode, 1U);
+                debug_printf("[LORA] POLL irq=0x%04X mode=0x%02X pend=%u\r\n",
+                             poll_irq, opmode, s_irq_pending);
                 debug_println("[LORA] POLL: forcing IRQ processing!");
                 s_irq_pending = 1U;
             }
@@ -389,6 +387,8 @@ void lora_p2p_irq_process(void)
     uint16_t irq = sx_get_irq();
     sx_clear_irq(irq);                 /* DIO1 → low */
     HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn); /* safe to re-arm now */
+
+    if (irq == 0U) return;             /* spurious wake – nothing to do */
 
 #if LORA_P2P_DEBUG
     debug_printf("[LORA] IRQ=0x%04X\r\n", irq);

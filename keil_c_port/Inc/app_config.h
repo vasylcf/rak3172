@@ -10,14 +10,14 @@
 #define APP_CONFIG_H
 
 /* ---- Choose role (set ONE to 1) ---- */
-#define APP_ROLE_MASTER   0
-#define APP_ROLE_SLAVE    1
+#define APP_ROLE_MASTER   1
+#define APP_ROLE_SLAVE    0
 
 /* ---- Slave serial-number filter ---- */
 #define SLAVE_SERIAL_NUMBER   "508011"
 #define SLAVE_SERIAL_LEN      6
 
 /* ---- Master fixed payload ---------- */
-#define MASTER_PAYLOAD        "508012"
+#define MASTER_PAYLOAD        "508011"
 
 #endif /* APP_CONFIG_H */
