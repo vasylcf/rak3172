@@ -84,7 +84,7 @@ static lora_p2p_rx_error_cb_t   s_rx_error_cb   = NULL;
 
 static volatile uint8_t s_irq_pending = 0U;
 
-#define RX_BUF_SIZE  256U
+#define RX_BUF_SIZE  255U
 static uint8_t s_rx_buf[RX_BUF_SIZE];
 
 #if LORA_P2P_DEBUG
@@ -403,9 +403,17 @@ void lora_p2p_irq_process(void)
         HAL_SUBGHZ_ExecGetCmd(&s_hsubghz, RADIO_GET_RXBUFFERSTATUS, rxbuf, 2U);
         uint8_t plen   = rxbuf[0];
         uint8_t offset = rxbuf[1];
+#if LORA_P2P_DEBUG
+        debug_printf("[LORA] RX plen=%u offset=%u\r\n", plen, offset);
+#endif
 
         uint8_t copylen = (plen > (uint8_t)RX_BUF_SIZE) ? (uint8_t)RX_BUF_SIZE : plen;
         HAL_SUBGHZ_ReadBuffer(&s_hsubghz, offset, s_rx_buf, copylen);
+
+#if LORA_P2P_DEBUG
+        debug_printf("[LORA] RX buf[0..3]=%02X %02X %02X %02X copylen=%u\r\n",
+                     s_rx_buf[0], s_rx_buf[1], s_rx_buf[2], s_rx_buf[3], copylen);
+#endif
 
         /* LoRa packet status: [0]=RssiPkt, [1]=SnrPkt(signed), [2]=SignalRssi */
         uint8_t pkt[3] = {0};

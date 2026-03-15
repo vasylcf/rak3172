@@ -53,11 +53,11 @@ static const char serial_number[SLAVE_SERIAL_LEN + 1] = SLAVE_SERIAL_NUMBER;
 /* Radio parameters – MUST match the Master for successful communication */
 static const lora_p2p_config_t slave_cfg = {
     .frequency        = 868000000U,
-    .spreading_factor = 12,
+    .spreading_factor = 7,
     .bandwidth        = LORA_BW_125,
     .coding_rate      = LORA_CR_4_5,
-    .preamble_len     = 8,
-    .tx_power         = 22,
+    .preamble_len     = 10,
+    .tx_power         = 14,
 };
 
 /* --------------------------------------------------------------------------
@@ -95,7 +95,8 @@ static void check_serial(const uint8_t *buf, uint16_t len)
 static void on_rx(lora_p2p_rx_data_t data)
 {
     rx_done = true;
-    debug_println("      -----  recv_cb   -----    ");
+    debug_printf("      -----  recv_cb  sz=%u rssi=%d snr=%d  -----\r\n",
+                 data.buffer_size, data.rssi, data.snr);
 
     if (data.buffer_size == 0) {
         debug_println("Empty buffer.");
