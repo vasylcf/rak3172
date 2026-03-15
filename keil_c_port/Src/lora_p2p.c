@@ -388,6 +388,8 @@ void lora_p2p_irq_process(void)
     sx_clear_irq(irq);                 /* DIO1 → low */
     HAL_NVIC_EnableIRQ(SUBGHZ_Radio_IRQn); /* safe to re-arm now */
 
+    if (irq == 0U) return;             /* spurious wake – nothing to do */
+
 #if LORA_P2P_DEBUG
     debug_printf("[LORA] IRQ=0x%04X\r\n", irq);
 #endif
