@@ -10,8 +10,8 @@
  * ----------
  *  MSI 48 MHz  ->  SYSCLK = HCLK = 48 MHz
  *  APB1 = APB2 = 48 MHz
- *  (No external HSE crystal on RAK3172; the radio TCXO is handled by
- *   lora_p2p.c via the RADIO_SET_TCXOMODE command.)
+ *  RAK3172 (base model) uses a standard 32 MHz XTAL — no TCXO.
+ *  The radio XTAL oscillator operates autonomously; no RCC HSE setup needed.
  *
  * Peripherals initialised here
  * ----------------------------
@@ -22,6 +22,14 @@
 #include <string.h>
 
 UART_HandleTypeDef huart2;
+
+/* --------------------------------------------------------------------------
+ * SysTick_Handler - required by HAL for HAL_Delay / HAL_GetTick
+ * -------------------------------------------------------------------------- */
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+}
 
 /* --------------------------------------------------------------------------
  * Error_Handler - required by CubeMX-generated stm32wlxx_hal_msp.c
@@ -40,7 +48,11 @@ void SystemClock_Config(void)
     RCC_OscInitTypeDef osc = {0};
     RCC_ClkInitTypeDef clk = {0};
 
-    /* Enable MSI, set to 48 MHz range (range 11) */
+    /* RAK3172 base model: no TCXO, no HSEBYPPWR needed.
+     * System clock runs from MSI 48 MHz.
+     * The radio's 32 MHz XTAL is managed internally by the SX126x. */
+
+    /* Enable MSI, set to 48 MHz range (range 11) — system clock */
     osc.OscillatorType = RCC_OSCILLATORTYPE_MSI;
     osc.MSIState       = RCC_MSI_ON;
     osc.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;

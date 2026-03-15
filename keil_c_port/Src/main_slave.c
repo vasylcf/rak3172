@@ -53,11 +53,11 @@ static const char serial_number[SLAVE_SERIAL_LEN + 1] = SLAVE_SERIAL_NUMBER;
 /* Radio parameters – MUST match the Master for successful communication */
 static const lora_p2p_config_t slave_cfg = {
     .frequency        = 868000000U,
-    .spreading_factor = 12,
+    .spreading_factor = 7,
     .bandwidth        = LORA_BW_125,
     .coding_rate      = LORA_CR_4_5,
-    .preamble_len     = 8,
-    .tx_power         = 22,
+    .preamble_len     = 10,
+    .tx_power         = 14,
 };
 
 /* --------------------------------------------------------------------------
@@ -95,7 +95,8 @@ static void check_serial(const uint8_t *buf, uint16_t len)
 static void on_rx(lora_p2p_rx_data_t data)
 {
     rx_done = true;
-    debug_println("      -----  recv_cb   -----    ");
+    debug_printf("      -----  recv_cb  sz=%u rssi=%d snr=%d  -----\r\n",
+                 data.buffer_size, data.rssi, data.snr);
 
     if (data.buffer_size == 0) {
         debug_println("Empty buffer.");
@@ -128,11 +129,15 @@ int main(void)
 {
     /* ---- HAL & peripheral init ---- */
     hw_init();
+    debug_println("BOOT:1");
 
     /* ---- Banner ---- */
-    debug_println("RAKwireless LoRa P2P – SLAVE (plain C / Keil)");
+    debug_println("RAKwireless LoRa P2P - SLAVE (plain C / Keil) v8-XTAL");
     debug_println("------------------------------------------------------");
+    debug_println("BOOT:2");
+
     HAL_Delay(2000);
+    debug_println("BOOT:3");
 
     debug_println("P2P Start");
     debug_printf("Frequency    : %lu Hz\r\n", (unsigned long)slave_cfg.frequency);
@@ -141,6 +146,7 @@ int main(void)
     debug_printf("CR           : 4/%u\r\n",   slave_cfg.coding_rate + 4);
     debug_printf("Preamble     : %u\r\n",     slave_cfg.preamble_len);
     debug_printf("TX power     : %d dBm\r\n", slave_cfg.tx_power);
+    debug_println("BOOT:4");
 
     debug_println("  --------------   SLAVE  --------------");
 
@@ -149,14 +155,17 @@ int main(void)
     lora_p2p_register_tx_callback(on_tx_done);
     lora_p2p_register_rx_timeout_callback(on_rx_timeout);
 
+    debug_println("BOOT:5");
     if (!lora_p2p_init(&slave_cfg)) {
         debug_println("ERROR: lora_p2p_init failed!");
         while (1) { __NOP(); }
     }
+    debug_println("BOOT:6");
 
     /* Start receiving (3 s initial timeout, then continuous via callbacks) */
     debug_printf("P2P set Rx mode %s\r\n",
                  lora_p2p_receive(3000) ? "Success" : "Fail");
+    debug_println("BOOT:7");
 
     /* ---- Super-loop ---- */
     while (1) {
