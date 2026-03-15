@@ -20,16 +20,19 @@ continuous LoRa RX mode on 868 MHz.
 - **IDE:** Keil MDK v5.43a, ARM Compiler V6.24
 - **Master device:** Second RAK3172 running Arduino/RUI3 firmware (confirmed working)
 
-## Radio Parameters (both Master and Slave)
+## Radio Parameters
 
-| Parameter | Value |
-|-----------|-------|
-| Frequency | 868 MHz |
-| SF | 12 |
-| BW | 125 kHz |
-| CR | 4/5 |
-| Preamble | 8 symbols |
-| TX Power | 22 dBm |
+Initially configured for SF12 (matching original Arduino sketch), then changed to match
+the actual Master device firmware:
+
+| Parameter | Slave (initial) | Slave (current) | Master (actual) |
+|-----------|----------------|-----------------|-----------------|
+| Frequency | 868 MHz | 868 MHz | 868 MHz |
+| SF | 12 | **7** | **7** |
+| BW | 125 kHz | 125 kHz | 125 kHz |
+| CR | 4/5 | 4/5 | 4/5 |
+| Preamble | 8 | **10** | **10** |
+| TX Power | 22 dBm | **14 dBm** | **14 dBm** |
 
 ---
 
@@ -78,6 +81,21 @@ continuous LoRa RX mode on 868 MHz.
   showed garbage bytes
 - **Fix:** Replaced with ASCII hyphen `-`
 
+### Issue 4: RX buffer always empty — uint8_t overflow (v8-XTAL)
+- **Symptom:** `plen=10` from radio, but `copylen=0`, `buffer_size=0` in callback.
+  Slave received packets (IRQ=0x0002) but always reported "Empty buffer."
+- **Root cause:** `RX_BUF_SIZE` was defined as `256U`. The comparison
+  `(plen > (uint8_t)RX_BUF_SIZE)` cast 256 to `uint8_t`, which wraps to **0**.
+  So `(10 > 0)` was always true, and `copylen = (uint8_t)256 = 0`.
+- **Fix:** Changed `RX_BUF_SIZE` from `256U` to `255U`
+
+### Issue 5: SF/Preamble mismatch between Master and Slave
+- **Symptom:** Slave in RX mode (`st=0xD2`) but never receiving packets from Master
+- **Root cause:** Master (RUI3 firmware) was configured with SF=7, Preamble=10, TxPower=14.
+  Slave was configured with SF=12, Preamble=8, TxPower=22.
+  LoRa with different SF values cannot communicate — they are orthogonal modulations.
+- **Fix:** Changed `slave_cfg` to match Master: SF=7, Preamble=10, TxPower=14
+
 ---
 
 ## Files Modified
@@ -85,8 +103,8 @@ continuous LoRa RX mode on 868 MHz.
 | File | Changes |
 |------|---------|
 | `Src/hw_init.c` | Added `SysTick_Handler()`. Removed `HSEBYPPWR` from `SystemClock_Config()` |
-| `Src/lora_p2p.c` | Removed all TCXO code (`SetTcxoMode`, voltage sweep, trim zeroing). Clean XTAL init sequence |
-| `Src/main_slave.c` | Added BOOT markers. Fixed en-dash. Version tag `v8-XTAL` |
+| `Src/lora_p2p.c` | Removed all TCXO code. Clean XTAL init. Fixed RX_BUF_SIZE 256→255. Added RX diag prints |
+| `Src/main_slave.c` | Added BOOT markers. Fixed en-dash. Version tag `v8-XTAL`. SF=7/Preamble=10/TxPower=14 |
 | `Inc/app_config.h` | `APP_ROLE_SLAVE=1`, `SLAVE_SERIAL_NUMBER="508011"` |
 | `rak-prj.uvprojx` | Changed `main_master.c` → `main_slave.c` |
 
@@ -168,7 +186,48 @@ the module does NOT have a TCXO.
 
 ## Next Steps
 
-- [ ] Test packet reception from Master device
-- [ ] Verify bidirectional communication (Slave responds to Master)
+- [x] Test packet reception from Master device
+- [x] Verify bidirectional communication (Slave responds to Master)
 - [ ] Remove BOOT markers and debug prints for production
 - [ ] Build and test Master firmware with same XTAL fix
+- [ ] Test "It's me" response (Master must send "508011")
+
+---
+
+## Current Status (2026-03-15)
+
+### Bidirectional P2P Communication — CONFIRMED WORKING
+
+**What works:**
+- Slave initialization (XTAL mode, all `err=0x0000`)
+- Packet reception from Master (IRQ=0x0002, plen=10, RSSI=-61, SNR=12)
+- Payload decoding (receives `"000006"`, `"000007"`, ... — Master sends counter)
+- Serial number comparison (correctly reports `=NO==` since `"00000X"` ≠ `"508011"`)
+- Response transmission `"It's not me"` (IRQ=0x0001 = TX_DONE)
+- Automatic return to RX after TX (continuous operation)
+
+**Note:** For the "It's me" response to trigger, the Master must send `"508011"`
+(the Slave's serial number). The current Master firmware sends an incrementing counter
+`"00000X"` instead of the expected serial number.
+
+### Working P2P Communication Log
+
+```
+!![LORA] IRQ=0x0002
+[LORA] RX plen=10 offset=0
+[LORA] RX buf[0..3]=30 30 30 30 copylen=10
+      -----  recv_cb  sz=10 rssi=-62 snr=12  -----
+Incoming message, length: 10, RSSI: -62, SNR: 12
+serial number = 508011
+==  begin ==
+303030303036==  begin 1 ==
+000006
+==  begin 2 ==
+=NO==
+Set P2P to Tx mode Success
+P2P send – Success
+This not me
+![LORA] IRQ=0x0001
+[LORA] START_RX            st=0xD2  err=0x0000
+P2P set Rx mode Success
+```
