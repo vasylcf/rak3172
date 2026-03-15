@@ -1,1 +1,12 @@
-assets/
+# Keil MDK build artifacts
+keil_c_port/Objects/
+keil_c_port/Listings/
+keil_c_port/build/
+
+# Keil user-specific files
+*.uvguix.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/

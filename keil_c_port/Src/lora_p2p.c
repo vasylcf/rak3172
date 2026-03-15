@@ -8,21 +8,8 @@
  * NO SubGHz_Phy middleware required (no radio.h, no radio_driver.c,
  * no MX_SubGHz_Init).
  *
- * Minimum CubeMX project
- * ----------------------
- *  - USART2 enabled  ->  generates usart.c / huart2  (uart_debug)
- *  - GPIO as needed
- *  - SubGHz_Phy middleware: NOT needed, do NOT add it
- *  - SUBGHZ peripheral: optionally enable so CubeMX generates
- *    HAL_SUBGHZ_MspInit(); if absent, this driver enables the
- *    clock itself.
- *
- * TCXO voltage (DIO3 output)
- * --------------------------
- *  Override with -DLORA_TCXO_VOLTAGE=0x07 etc.
- *  0x00=1.6 V  0x01=1.7 V  0x02=1.8 V  0x03=2.2 V
- *  0x04=2.4 V  0x05=2.7 V  0x06=3.0 V  0x07=3.3 V
- *  RAK3172 TCXO is fed from DIO3; typical value: 0x06 (3.0 V).
+ * RAK3172 (base model) uses a standard 32 MHz XTAL crystal, NOT a TCXO.
+ * Therefore SetTcxoMode must NOT be called.
  */
 
 #include "lora_p2p.h"
@@ -66,15 +53,6 @@
 #define SX_IRQ_TIMEOUT          0x0200U
 #define SX_IRQ_ALL              (SX_IRQ_TX_DONE | SX_IRQ_RX_DONE | \
                                   SX_IRQ_CRC_ERR | SX_IRQ_TIMEOUT)
-
-/* TCXO on DIO3 */
-#ifndef LORA_TCXO_VOLTAGE
-#  define LORA_TCXO_VOLTAGE     0x01U   /* 1.7 V — standard for RAK3172 */
-#endif
-/* Stabilisation timeout: 10 ms / 15.625 us = 640 = 0x000280 */
-#define TCXO_TO_HI              0x00U
-#define TCXO_TO_MID             0x02U
-#define TCXO_TO_LO              0x80U
 
 /* Image calibration for 868 MHz band */
 #define CAL_IMG_F1              0xD7U
@@ -146,12 +124,6 @@ static void sx_cmd1(SUBGHZ_RadioSetCmd_t cmd, uint8_t val)
 static void sx_set_standby(uint8_t mode)   { sx_cmd1(RADIO_SET_STANDBY,       mode); }
 static void sx_set_pkt_type_lora(void)     { sx_cmd1(RADIO_SET_PACKETTYPE,     SX_PKT_TYPE_LORA); }
 static void sx_set_regulator_dcdc(void)    { sx_cmd1(RADIO_SET_REGULATORMODE,  SX_REG_DCDC); }
-
-static void sx_set_tcxo(void)
-{
-    uint8_t p[4] = { LORA_TCXO_VOLTAGE, TCXO_TO_HI, TCXO_TO_MID, TCXO_TO_LO };
-    HAL_SUBGHZ_ExecSetCmd(&s_hsubghz, RADIO_SET_TCXOMODE, p, 4U);
-}
 
 static void sx_calibrate_all(void)
 {
@@ -304,19 +276,21 @@ bool lora_p2p_init(const lora_p2p_config_t *cfg)
 #endif
 
     /*
-     * SX126x init sequence:
-     *   STDBY_RC -> TCXO -> wait -> calibrate -> DCDC -> LoRa packet type
+     * SX126x init sequence for XTAL mode (RAK3172 base model)
+     *   STDBY_RC -> calibrate -> DCDC -> LoRa packet type
      *   -> frequency -> image cal -> PA -> TX params -> modulation
      *   -> packet params -> buffer base -> DIO2 RF switch -> DIO IRQ
+     *
+     * NO SetTcxoMode — RAK3172 (without -T suffix) uses a plain XTAL.
      */
+
     sx_set_standby(SX_STDBY_RC);
     dbg_step("STANDBY_RC");
-    sx_set_tcxo();
-    dbg_step("SET_TCXO");
-    HAL_Delay(20U);                /* wait for TCXO to stabilise */
 
+    /* Calibrate all blocks (RC64k, RC13M, PLL, ADC, image) */
     sx_calibrate_all();
     dbg_step("CALIBRATE_ALL");
+
     sx_set_regulator_dcdc();
     dbg_step("SET_DCDC");
     sx_set_pkt_type_lora();
