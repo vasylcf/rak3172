@@ -398,9 +398,9 @@
               <FilePath>.\Src\lora_p2p.c</FilePath>
             </File>
             <File>
-              <FileName>main_slave.c</FileName>
+              <FileName>main_master.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Src\main_slave.c</FilePath>
+              <FilePath>.\Src\main_master.c</FilePath>
             </File>
             <File>
               <FileName>uart_debug.c</FileName>

@@ -47,11 +47,11 @@ static volatile bool rx_done = false;
 /* Radio parameters (match the Arduino Master sketch) */
 static const lora_p2p_config_t master_cfg = {
     .frequency        = 868000000U,
-    .spreading_factor = 12,
+    .spreading_factor = 7,
     .bandwidth        = LORA_BW_125,   /* bw = 0 in Arduino code */
     .coding_rate      = LORA_CR_4_5,   /* cr = 0 → 4/5 */
-    .preamble_len     = 8,
-    .tx_power         = 22,            /* dBm (note: Arduino had txPower=10 as var but set(22)) */
+    .preamble_len     = 10,
+    .tx_power         = 14,            /* dBm – match RUI3 Master & Slave */
 };
 
 /* --------------------------------------------------------------------------
